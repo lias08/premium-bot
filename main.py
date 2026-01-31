@@ -4,12 +4,11 @@ import time
 import json
 import random
 
-# Lädt die Konfiguration aus dem Secret
+# Konfiguration laden
 raw_config = os.getenv("BOT_CONFIG")
 try:
     CONFIG_LIST = json.loads(raw_config) if raw_config else []
-except Exception as e:
-    print(f"[!] JSON Fehler: {e}")
+except:
     CONFIG_LIST = []
 
 DB_FILE = "seen_items.txt"
@@ -19,17 +18,14 @@ def load_seen():
     with open(DB_FILE, "r") as f: return f.read().splitlines()
 
 def save_seen(ids):
-    with open(DB_FILE, "w") as f: f.write("\n".join(map(str, ids[-2000:])))
+    with open(DB_FILE, "w") as f: f.write("\n".join(map(str, ids[-1000:])))
 
 def send_discord(webhook, item):
     import requests
     p = item.get('total_item_price')
     price = float(p.get('amount')) if isinstance(p, dict) else float(p or 0)
+    img = item.get('photo', {}).get('url', '').replace("/medium/", "/full/")
     
-    # Galerie-Bilder sammeln
-    photos = item.get('photos', []) or ([item.get('photo')] if item.get('photo') else [])
-    imgs = [img.get('url', '').replace("/medium/", "/full/") for img in photos if img.get('url')]
-
     data = {
         "username": "Vinted Sniper Elite",
         "embeds": [{
@@ -40,68 +36,59 @@ def send_discord(webhook, item):
                 {"name": "💶 Preis", "value": f"**{price:.2f} €**", "inline": True},
                 {"name": "🏷️ Marke", "value": item.get('brand_title', 'N/A'), "inline": True}
             ],
-            "image": {"url": imgs[0] if imgs else ""},
-            "footer": {"text": "GitHub 24/7 Multi-Bot"}
+            "image": {"url": img},
+            "footer": {"text": "GitHub 24/7 Sniper"}
         }]
     }
-    # Bis zu 3 weitere Bilder anhängen
-    for extra in imgs[1:4]:
-        data["embeds"].append({"url": item.get('url'), "image": {"url": extra}})
-    
     requests.post(webhook, json=data)
 
 def run():
-    # Wir nutzen verschiedene Browser-Identitäten, um Blöcke zu vermeiden
-    identifiers = ["chrome_103", "chrome_112", "firefox_102", "opera_90"]
-    session = tls_client.Session(client_identifier=random.choice(identifiers), random_tls_extension_order=True)
-    
+    # TLS Client simuliert einen echten Browser (Chrome 120)
+    session = tls_client.Session(client_identifier="chrome_120", random_tls_extension_order=True)
     seen_ids = load_seen()
-    print(f"[*] Datenbank: {len(seen_ids)} IDs geladen.")
-
+    
     if not CONFIG_LIST:
-        print("[!] Keine BOT_CONFIG gefunden. Prüfe die Secrets!")
+        print("[!] FEHLER: BOT_CONFIG Secret leer oder ungültig!")
         return
-
-    # Mische die Reihenfolge der Channels bei jedem Lauf
-    random.shuffle(CONFIG_LIST)
 
     for entry in CONFIG_LIST:
         webhook = entry.get("webhook")
         v_url = entry.get("url")
-        if not webhook or not v_url: continue
+        if not webhook or "http" not in v_url: continue
         
-        api_url = v_url if "api/v2" in v_url else f"https://www.vinted.de/api/v2/catalog/items?{v_url.split('?')[-1]}&order=newest_first"
-        
+        # API URL Umwandlung
+        params = v_url.split('?')[-1]
+        api_url = f"https://www.vinted.de/api/v2/catalog/items?{params}"
+        if "order=" not in api_url: api_url += "&order=newest_first"
+
         headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Accept": "application/json, text/plain, */*",
-            "Accept-Language": "de-DE,de;q=0.9"
+            "Accept-Language": "de-DE,de;q=0.9",
+            "Origin": "https://www.vinted.de",
+            "Referer": "https://www.vinted.de/"
         }
 
         try:
-            # Kurze Pause, um Vinted nicht zu spammen
-            time.sleep(random.uniform(2.5, 5.0))
+            # Vor dem eigentlichen Call einmal die Hauptseite aufrufen (Cookie-Check)
+            session.get("https://www.vinted.de", headers=headers)
+            time.sleep(1)
             
             res = session.get(api_url, headers=headers)
+            print(f"[*] Status {res.status_code} für {v_url[:40]}...")
+
             if res.status_code == 200:
                 items = res.json().get("items", [])
-                new_found = 0
                 for item in items:
                     i_id = str(item["id"])
                     if i_id not in seen_ids:
-                        if seen_ids: # Nur senden, wenn DB nicht leer
-                            send_discord(webhook, item)
-                            new_found += 1
+                        if seen_ids: send_discord(webhook, item)
                         seen_ids.append(i_id)
-                print(f"[✓] {new_found} neue Artikel für URL: {v_url[:40]}...")
-            else:
-                print(f"[!] Fehler {res.status_code} bei URL: {v_url[:40]}")
-                if res.status_code == 403:
-                    print("[!] Abgebrochen wegen 403 Block.")
-                    break
+            elif res.status_code == 403:
+                print("[!] Vinted blockiert GitHub. Probiere es in 5 Min erneut.")
         except Exception as e:
             print(f"[!] Fehler: {e}")
-    
+            
     save_seen(seen_ids)
 
 if __name__ == "__main__":
