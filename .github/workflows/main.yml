@@ -2,16 +2,16 @@ name: Hacker Sniper Loop
 
 on:
   schedule:
-    - cron: '0 */6 * * *' # Startet nur alle 6 Stunden neu
+    - cron: '0 */6 * * *' # Alle 6h Neustart
   workflow_dispatch:
 
 jobs:
   snipe:
     runs-on: ubuntu-latest
-    # Verhindert, dass zwei Instanzen gleichzeitig laufen
+    timeout-minutes: 360
     concurrency: 
       group: vinted-loop
-      cancel-in-progress: true 
+      cancel-in-progress: true
     permissions:
       contents: write
     steps:
@@ -21,12 +21,12 @@ jobs:
           python-version: '3.9'
       - name: Install
         run: pip install -r requirements.txt
-      - name: Run Hacker Loop
+      - name: Run
         env:
           BOT_CONFIG: ${{ secrets.BOT_CONFIG }}
         run: python main.py
       - name: Save DB
-        if: always() # Speichert auch, wenn der Loop abgebrochen wird
+        if: always()
         run: |
           git config --global user.name "VintedBot"
           git config --global user.email "bot@vinted.com"
