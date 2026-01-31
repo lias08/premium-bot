@@ -1,8 +1,8 @@
-name: Vinted Sniper 24/7
+name: Vinted Sniper
 
 on:
   schedule:
-    - cron: '*/5 * * * *' # Läuft alle 5 Minuten
+    - cron: '*/5 * * * *'
   workflow_dispatch:
 
 jobs:
@@ -11,26 +11,20 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
-
-      - name: Setup Python
-        uses: actions/setup-python@v4
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
         with:
           python-version: '3.9'
-
-      - name: Install Dependencies
+      - name: Install
         run: pip install -r requirements.txt
-
-      - name: Run Sniper
+      - name: Run
         env:
           BOT_CONFIG: ${{ secrets.BOT_CONFIG }}
         run: python main.py
-
-      - name: Commit & Push Changes
+      - name: Save
         run: |
           git config --global user.name "VintedBot"
           git config --global user.email "bot@vinted.com"
           git add seen_items.txt
-          git commit -m "Update seen items [skip ci]" || exit 0
+          git commit -m "Update DB [skip ci]" || exit 0
           git push
