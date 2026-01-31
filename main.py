@@ -5,7 +5,7 @@ import json
 
 # Konfiguration aus GitHub Secrets laden
 CONFIG = {
-    os.getenv("WEBHOOK_1"): os.getenv("VINTED_URL_1")
+    os.getenv("WEBHOOK_1"): os.getenv("https://www.vinted.de/catalog?search_text=sweater&catalog[]=1811&price_to=20.0&currency=EUR&size_ids[]=207&size_ids[]=208&size_ids[]=209&brand_ids[]=304&brand_ids[]=88&search_id=30738255657&order=newest_first")
 }
 
 DB_FILE = "seen_items.txt"
