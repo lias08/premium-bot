@@ -3,10 +3,13 @@ import tls_client
 import time
 import json
 
-# Konfiguration aus GitHub Secrets
-CONFIG = {
-    os.getenv("WEBHOOK_1"): os.getenv("https://www.vinted.de/catalog?search_text=sweater&catalog[]=1811&price_to=20.0&currency=EUR&size_ids[]=207&size_ids[]=208&size_ids[]=209&brand_ids[]=304&brand_ids[]=88&search_id=30738255657&order=newest_first")
-}
+# Lädt die Konfiguration aus dem Secret
+raw_config = os.getenv("BOT_CONFIG")
+try:
+    CONFIG_LIST = json.loads(raw_config) if raw_config else []
+except:
+    print("[!] FEHLER: BOT_CONFIG Secret hat kein gültiges JSON-Format!")
+    CONFIG_LIST = []
 
 DB_FILE = "seen_items.txt"
 
@@ -21,14 +24,31 @@ def send_discord(webhook, item):
     import requests
     p = item.get('total_item_price')
     price = float(p.get('amount')) if isinstance(p, dict) else float(p or 0)
+    item_url = item.get('url') or f"https://www.vinted.de/items/{item['id']}"
+    
+    # Bilder-Logik
+    photos = item.get('photos', []) or ([item.get('photo')] if item.get('photo') else [])
+    imgs = [img.get('url', '').replace("/medium/", "/full/") for img in photos if img.get('url')]
+
     data = {
+        "username": "Vinted Sniper",
         "embeds": [{
-            "title": f"✨ NEU: {item.get('title')}",
-            "url": item.get('url'),
-            "description": f"Preis: **{price:.2f} €**",
-            "color": 0x09b1ba
+            "title": f"🔥 {item.get('title')}",
+            "url": item_url,
+            "color": 0x09b1ba,
+            "fields": [
+                {"name": "💶 Preis", "value": f"**{price:.2f} €**", "inline": True},
+                {"name": "🏷️ Marke", "value": item.get('brand_title', 'N/A'), "inline": True},
+                {"name": "📏 Größe", "value": item.get('size_title', 'N/A'), "inline": True}
+            ],
+            "image": {"url": imgs[0] if imgs else ""},
+            "footer": {"text": "24/7 GitHub Sniper"}
         }]
     }
+    # Galerie-Trick für weitere Bilder
+    for extra in imgs[1:4]:
+        data["embeds"].append({"url": item_url, "image": {"url": extra}})
+    
     requests.post(webhook, json=data)
 
 def run():
@@ -36,38 +56,33 @@ def run():
     seen_ids = load_seen()
     print(f"[*] Datenbank geladen: {len(seen_ids)} IDs bekannt.")
     
-    for webhook, v_url in CONFIG.items():
-        if not webhook or not v_url:
-            print("[!] FEHLER: Webhook oder URL fehlt in den Secrets!")
-            continue
+    if not CONFIG_LIST:
+        print("[!] Keine Konfiguration gefunden.")
+        return
+
+    for entry in CONFIG_LIST:
+        webhook = entry.get("webhook")
+        v_url = entry.get("url")
+        if not webhook or not v_url: continue
         
-        # API URL Fix
+        # URL Konvertierung für API
         api_url = v_url if "api/v2" in v_url else f"https://www.vinted.de/api/v2/catalog/items?{v_url.split('?')[-1]}&order=newest_first"
         
-        print(f"[*] Scanne Vinted...")
         try:
             res = session.get(api_url, headers={"User-Agent": "Mozilla/5.0"})
-            print(f"[*] Status Code: {res.status_code}")
-            
             if res.status_code == 200:
                 items = res.json().get("items", [])
-                print(f"[*] {len(items)} Artikel in der Liste gefunden.")
-                
-                new_count = 0
+                print(f"[*] {len(items)} Artikel gefunden für {v_url[:30]}...")
                 for item in items:
                     i_id = str(item["id"])
                     if i_id not in seen_ids:
-                        if len(seen_ids) > 0: # Verhindert Spam beim 1. Lauf
+                        if seen_ids: # Beim 1. Mal nur IDs speichern, nicht senden
                             send_discord(webhook, item)
-                            new_count += 1
                         seen_ids.append(i_id)
-                
-                print(f"[*] {new_count} neue Artikel an Discord gesendet.")
             else:
-                print(f"[!] Vinted hat die Anfrage abgelehnt (Block).")
-                
+                print(f"[!] Fehler {res.status_code} bei Vinted Call.")
         except Exception as e:
-            print(f"[!] Kritischer Fehler: {e}")
+            print(f"[!] Fehler: {e}")
     
     save_seen(seen_ids)
 
