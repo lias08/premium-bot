@@ -1,0 +1,37 @@
+name: Vinted Sniper 24/7
+
+on:
+  schedule:
+    - cron: '*/5 * * * *' # Alle 5 Minuten
+  workflow_dispatch:
+
+jobs:
+  snipe:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Erlaubt dem Bot die seen_items.txt zu speichern
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Python Setup
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install
+        run: pip install -r requirements.txt
+
+      - name: Run
+        env:
+          WEBHOOK_1: ${{ secrets.WEBHOOK_1 }}
+          VINTED_URL_1: ${{ secrets.VINTED_URL_1 }}
+        run: python main.py
+
+      - name: Commit & Push Changes
+        run: |
+          git config --global user.name "VintedBot"
+          git config --global user.email "bot@vinted.com"
+          git add seen_items.txt
+          git commit -m "Update DB [skip ci]" || exit 0
+          git push
